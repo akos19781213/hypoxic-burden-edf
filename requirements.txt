@@ -1,0 +1,8 @@
+streamlit
+mne
+yasa
+pandas
+numpy
+scipy
+matplotlib
+reportlab
