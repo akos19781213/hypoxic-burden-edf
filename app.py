@@ -403,6 +403,7 @@ def rule_based_staging(raw, eeg_ch, eog_ch, emg_ch):
 # --------------------------------------------------------------
 st.markdown("---")
 st.markdown("**Open-source** • [GitHub](https://github.com/Apolloplectic/hypoxic-burden-edf)")
-st.markdown("**DOI**: [10.5281/zenodo.XXXXXXX](https://doi.org/10.5281/zenodo.XXXXXXX)")
+st.markdown("**DOI**: [10.5281/zenodo.17561726](https://doi.org/10.5281/zenodo.17561726)")
 st.markdown("Built with **Streamlit + MNE + YASA**.")
 st.markdown("Cite: *Eur Heart J* 2019;40:1149-1157.")
+
