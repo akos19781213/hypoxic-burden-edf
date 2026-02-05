@@ -230,7 +230,7 @@ with st.expander("File too large? Run locally (2 GB+ support) — no coding need
     ---
   
     **No Internet? No Problem.**
-    Works **offline** after first run.
+    Works **offline**.
     ---
   
     **Need help?** Email: `sam.johnson9797@gmail.com`
@@ -712,3 +712,4 @@ st.markdown("**Open-source** • [GitHub](https://github.com/Apolloplectic/hypox
 st.markdown("**DOI**: [10.5281/zenodo.17561726](https://doi.org/10.5281/zenodo.17561726)")
 st.markdown("Built with **Streamlit + MNE + YASA**.")
 st.markdown("Cite: *Eur Heart J* 2019;40:1149-1157.")
+
