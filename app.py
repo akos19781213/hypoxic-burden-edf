@@ -11,11 +11,12 @@ import zipfile
 from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, Image
 from reportlab.lib.styles import getSampleStyleSheet
-import wfdb  # <-- NEW
-from pathlib import Path  # <-- NEW
+from reportlab.lib import colors
+import wfdb
+from pathlib import Path
 
 # --------------------------------------------------------------
-# SUPPORTING FUNCTIONS
+# SUPPORTING FUNCTIONS (MUST BE AT TOP!)
 # --------------------------------------------------------------
 def generate_hb_pdf(filename, result, proof_mode="Overlay", include_stages=True):
     buffer = io.BytesIO()
@@ -168,19 +169,12 @@ def rule_based_staging(raw, eeg_ch, eog_ch, emg_ch):
     return stages
 
 # --------------------------------------------------------------
-# YASA: Deep Learning Sleep Staging
+# MAIN APP
 # --------------------------------------------------------------
-try:
-    import yasa
-    YASA_AVAILABLE = True
-except ImportError:
-    YASA_AVAILABLE = False
-
 st.set_page_config(page_title="Hypoxic Burden Calculator", layout="centered")
 st.title("Hypoxic Burden Calculator")
 st.markdown("""
-**Upload PSG EDF file** to get the hypoxic burden in (%min)/h with **95% CI**.
-
+**Upload PSG EDF file** → get the hypoxic burden in (%min)/h with **95% CI**.
 Based on:
 > Azarbarzin A, et al. *European Heart Journal* (2019) – DOI: [10.1093/eurheartj/ehy624](https://doi.org/10.1093/eurheartj/ehy624)
 """)
@@ -217,7 +211,7 @@ with st.expander("File too large? Run locally (2 GB+ support) — no coding need
   
     #### **Step 2: Unzip & Run**
     1. **Double-click** the downloaded `.zip` file
-    2. Open the folder to double-click:
+    2. Open the folder → double-click:
        - **Windows**: `Run_Calculator.bat`
        - **Mac**: `Run_Calculator.command`
     The app will open in your browser automatically.
@@ -229,8 +223,8 @@ with st.expander("File too large? Run locally (2 GB+ support) — no coding need
     - Get **AHI, ODI, Hypoxic Burden with 95% CI**
     ---
   
-    **No Internet? No Problem.**
-    Works **offline**.
+    #### **No Internet? No Problem.**
+    Works **offline** after first run.
     ---
   
     **Need help?** Email: `sam.johnson9797@gmail.com`
@@ -272,7 +266,6 @@ if edf_file is not None:
     if st_path.exists():
         try:
             ann = wfdb.rdann(str(st_path).rsplit(".", 1)[0], "st")
-            # Extract apnea/hypopnea events
             resp_idx = [i for i, s in enumerate(ann.symbol) if s and ("A" in s or "H" in s)]
             if resp_idx:
                 times_sec = ann.sample[resp_idx] / raw.info["sfreq"]
@@ -305,7 +298,7 @@ if edf_file is not None:
     if desat_start_sec != 60 or desat_end_sec != 120: st.warning("Desat window ≠ -60/+120s (Azarbarzin default).")
     if "4%" in scoring_rule: st.warning("Using 4% rule (non-AASM).")
     if artifact_filter != "Off": st.warning("Artifact filter enabled.")
-    if not flow_ch: st.warning("No airflow to crude AHI.")
+    if not flow_ch: st.warning("No airflow → crude AHI.")
 
     # === ANALYZE BUTTON ===
     if not st.session_state.analyzed:
@@ -546,20 +539,10 @@ if edf_file is not None:
         # DISPLAY RESULTS
         st.markdown("---")
         st.subheader("Overall Sleep Apnea Metrics")
-        col1, col2 = st.columns(2)
-        with col1:
-            st.metric("**App AHI**", f"{ahi_total:.1f}")
-        with col2:
-            if manual_ahi is not None:
-                delta = ahi_total - manual_ahi
-                st.metric("**Manual (MIT) AHI**", f"{manual_ahi:.1f}", delta=f"{delta:+.1f}")
-            else:
-                st.metric("**Manual (MIT) AHI**", "—")
-        col3, col4 = st.columns(2)
-        with col3:
-            st.metric(f"**ODI ({desat_threshold}%)**", f"{odi_total:.1f}")
-        with col4:
-            st.metric("**Hypoxic Burden**", hb_display)
+        col1, col2, col3 = st.columns(3)
+        with col1: st.metric("**AHI**", f"{ahi_total:.1f}")
+        with col2: st.metric(f"**ODI ({desat_threshold}%)**", f"{odi_total:.1f}")
+        with col3: st.metric("**Hypoxic Burden**", hb_display)
         st.success(f"**Risk Level:** {risk}")
 
         # PROOF REPORT BUTTON
@@ -712,4 +695,3 @@ st.markdown("**Open-source** • [GitHub](https://github.com/Apolloplectic/hypox
 st.markdown("**DOI**: [10.5281/zenodo.17561726](https://doi.org/10.5281/zenodo.17561726)")
 st.markdown("Built with **Streamlit + MNE + YASA**.")
 st.markdown("Cite: *Eur Heart J* 2019;40:1149-1157.")
-
