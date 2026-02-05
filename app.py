@@ -11,9 +11,11 @@ import zipfile
 from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, Image
 from reportlab.lib.styles import getSampleStyleSheet
+import wfdb  # <-- NEW
+from pathlib import Path  # <-- NEW
 
 # --------------------------------------------------------------
-# SUPPORTING FUNCTIONS (MUST BE AT TOP!)
+# SUPPORTING FUNCTIONS
 # --------------------------------------------------------------
 def generate_hb_pdf(filename, result, proof_mode="Overlay", include_stages=True):
     buffer = io.BytesIO()
@@ -24,7 +26,21 @@ def generate_hb_pdf(filename, result, proof_mode="Overlay", include_stages=True)
     story.append(Paragraph("Hypoxic Burden Report", styles['Title']))
     story.append(Paragraph(f"<b>File:</b> {filename}", styles['Normal']))
     story.append(Paragraph(f"<b>Duration:</b> {result['duration']:.1f} hours", styles['Normal']))
-    story.append(Paragraph(f"<b>AHI:</b> {result['ahi']:.1f} | <b>ODI:</b> {result['odi']:.1f}", styles['Normal']))
+    
+    # App AHI
+    story.append(Paragraph(f"<b>App AHI:</b> {result['ahi']:.1f}", styles['Normal']))
+    
+    # Manual AHI (if available)
+    if result.get('manual_ahi') is not None:
+        delta = result['ahi'] - result['manual_ahi']
+        story.append(Paragraph(
+            f"<b>Manual (MIT) AHI:</b> {result['manual_ahi']:.1f} (Δ {delta:+.1f})",
+            styles['Normal']
+        ))
+    else:
+        story.append(Paragraph("<b>Manual (MIT) AHI:</b> —", styles['Normal']))
+    
+    story.append(Paragraph(f"<b>ODI:</b> {result['odi']:.1f}", styles['Normal']))
     story.append(Paragraph(f"<b>HB:</b> {result['total_hb']:.2f} (%min)/h", styles['Normal']))
     story.append(Paragraph(f"<b>95% CI:</b> [{result['ci'][0]:.2f}–{result['ci'][1]:.2f}]", styles['Normal']))
     story.append(Spacer(1, 20))
@@ -54,32 +70,47 @@ def generate_hb_pdf(filename, result, proof_mode="Overlay", include_stages=True)
             story.append(Spacer(1, 12))
             plt.close(fig)
 
+    if result.get('use_mit_st'):
+        story.append(Paragraph("<b>Gold Standard:</b> MIT-annotated PSG (SHHS/slpdb)", styles['Normal']))
+
     story.append(Paragraph("Method: Azarbarzin et al., EHJ 2019", styles['Normal']))
     doc.build(story)
     buffer.seek(0)
     return buffer
 
 def plot_overlay_events(events):
-    fig, ax = plt.subplots(figsize=(7, 3))
-    all_t, all_s = [], []
+    fig, ax = plt.subplots(figsize=(8, 4.5))
+    all_spo2 = []
+    all_t = []
+
+    # Fixed grid: -60 s to +120 s, 1 Hz resolution
+    t_grid = np.linspace(-60, 120, 181)  # 181 points = 180 s at 1 Hz
+
     for ev in events:
-        t = ev['win_df']['time'] - ev['end_t']
-        s = ev['win_df']['spo2']
-        ax.plot(t, s, color='lightblue', alpha=0.3)
-        all_t.append(t.values)
-        all_s.append(s.values)
-    max_len = max(len(a) for a in all_s)
-    padded = np.full((len(all_s), max_len), np.nan)
-    for i, arr in enumerate(all_s):
-        padded[i, :len(arr)] = arr
-    mean = np.nanmean(padded, axis=0)
-    t_mean = np.linspace(-60, 120, len(mean))
-    ax.plot(t_mean, mean, 'darkblue', linewidth=3, label=f'Avg (n={len(events)})')
-    ax.set_title("Average Desaturation Curve")
-    ax.set_xlabel("Time from event end (s)")
+        t_raw = ev['win_df']['time'] - ev['end_t']  # t=0 = event end
+        s_raw = ev['win_df']['spo2']
+
+        # Interpolate onto fixed grid
+        s_interp = np.interp(t_grid, t_raw, s_raw, left=np.nan, right=np.nan)
+
+        ax.plot(t_grid, s_interp, color='lightgray', alpha=0.4, linewidth=0.8)
+        all_spo2.append(s_interp)
+        all_t.append(t_grid)
+
+    # Ensemble average (mean across all interpolated curves)
+    all_spo2 = np.array(all_spo2)
+    mean_spo2 = np.nanmean(all_spo2, axis=0)
+
+    ax.plot(t_grid, mean_spo2, color='darkblue', linewidth=3, label=f'Average (n={len(events)})')
+    ax.axvline(0, color='red', linestyle='--', alpha=0.7, label='Event end')
+
+    ax.set_title("Ensemble-Average Desaturation Curve")
+    ax.set_xlabel("Time relative to event end (seconds)")
     ax.set_ylabel("SpO₂ (%)")
-    ax.legend()
+    ax.set_ylim(75, 100)  # typical clinical range
+    ax.legend(fontsize=10)
     ax.grid(True, alpha=0.3)
+
     return fig
 
 def plot_single_event(ev):
@@ -232,6 +263,31 @@ if edf_file is not None:
         st.stop()
     st.write(f"**SpO₂:** `{spo2_ch}` | **Airflow:** `{flow_ch or 'Not found'}`")
 
+    # === GOLD-STANDARD .st SUPPORT ===
+    st_path = Path(temp_path).with_suffix(".st")
+    use_mit_st = False
+    manual_ahi = None
+    manual_events = []
+
+    if st_path.exists():
+        try:
+            ann = wfdb.rdann(str(st_path).rsplit(".", 1)[0], "st")
+            # Extract apnea/hypopnea events
+            resp_idx = [i for i, s in enumerate(ann.symbol) if s and ("A" in s or "H" in s)]
+            if resp_idx:
+                times_sec = ann.sample[resp_idx] / raw.info["sfreq"]
+                manual_events = [{"start": t, "end": t + 10.0} for t in times_sec]
+                total_sleep_sec = raw.times[-1]
+                manual_ahi = len(manual_events) * 60 / total_sleep_sec
+            use_mit_st = st.checkbox("Use MIT Annotations (Gold Standard)", value=True, key="use_mit_st")
+            if use_mit_st:
+                st.success("MIT .st loaded – using manual AHI + staging")
+        except Exception as e:
+            st.warning(f"Could not read .st: {e}")
+            use_mit_st = False
+    else:
+        st.info("No .st file found – using auto-detection")
+
     # === ADVANCED SETTINGS ===
     with st.expander("Advanced Settings", expanded=False):
         col1, col2 = st.columns(2)
@@ -289,7 +345,7 @@ if edf_file is not None:
         odi_events = df_spo2[df_spo2['desat']].copy()
         progress_bar.progress(0.40)
 
-        # STEP 4: Airflow Events
+        # STEP 4: Airflow Events (Event Detection)
         status_text.text("Step 4/6: Detecting apnea/hypopnea events...")
         if flow_ch:
             st.info("Resampling airflow to 10 Hz")
@@ -363,7 +419,8 @@ if edf_file is not None:
             if st.button("Download Proof Report (PDF)", type="secondary", key="download_proof_no_events"):
                 buffer = generate_hb_pdf(edf_file.name, {
                     'duration': total_hours, 'ahi': ahi_total, 'odi': odi_total,
-                    'total_hb': total_hb, 'ci': [0, 0], 'events': [], 'stage_hb': {}
+                    'total_hb': total_hb, 'ci': [0, 0], 'events': [], 'stage_hb': {},
+                    'manual_ahi': manual_ahi, 'use_mit_st': use_mit_st
                 }, "Overlay", False)
                 st.download_button("Download Proof PDF", data=buffer.getvalue(),
                     file_name=f"HB_Proof_{edf_file.name.replace('.edf', '')}.pdf", mime="application/pdf")
@@ -376,7 +433,16 @@ if edf_file is not None:
         stage_events = {'W': [], 'N1': [], 'N2': [], 'N3': [], 'REM': [], 'Unknown': []}
         proof_events = []
 
-        if YASA_AVAILABLE and eeg_ch and raw.info['sfreq'] >= 100:
+        if use_mit_st and 'ann' in locals():
+            st.info("Using MIT-annotated sleep stages")
+            stages = []
+            for desc in ann.symbol:
+                if desc in ['W', '1', '2', '3', '4']: stages.append('W' if desc == 'W' else f'N{desc}')
+                elif desc == 'R': stages.append('REM')
+                else: stages.append('Unknown')
+            max_epochs = int(eeg_duration / 30)
+            stages = stages[:max_epochs]
+        elif YASA_AVAILABLE and eeg_ch and raw.info['sfreq'] >= 100:
             st.info("**YASA Deep Learning Staging**")
             try:
                 sls = yasa.SleepStaging(raw, eeg_name=eeg_ch, eog_name=eog_ch, emg_name=emg_ch)
@@ -385,11 +451,6 @@ if edf_file is not None:
                 stages = ['REM' if s == 'R' else s for s in stages]
                 max_epochs = int(eeg_duration / 30)
                 stages = stages[:max_epochs]
-                for i, stage in enumerate(stages):
-                    start = i * 30
-                    end = (i + 1) * 30
-                    evs = df_events[(df_events['end'] >= start) & (df_events['end'] < end)]
-                    stage_events[stage].extend(evs.to_dict('records'))
             except Exception as e:
                 st.warning(f"YASA error: {e}. Using rule-based.")
                 stages = rule_based_staging(raw, eeg_ch, eog_ch, emg_ch)[:int(eeg_duration / 30)]
@@ -485,10 +546,20 @@ if edf_file is not None:
         # DISPLAY RESULTS
         st.markdown("---")
         st.subheader("Overall Sleep Apnea Metrics")
-        col1, col2, col3 = st.columns(3)
-        with col1: st.metric("**AHI**", f"{ahi_total:.1f}")
-        with col2: st.metric(f"**ODI ({desat_threshold}%)**", f"{odi_total:.1f}")
-        with col3: st.metric("**Hypoxic Burden**", hb_display)
+        col1, col2 = st.columns(2)
+        with col1:
+            st.metric("**App AHI**", f"{ahi_total:.1f}")
+        with col2:
+            if manual_ahi is not None:
+                delta = ahi_total - manual_ahi
+                st.metric("**Manual (MIT) AHI**", f"{manual_ahi:.1f}", delta=f"{delta:+.1f}")
+            else:
+                st.metric("**Manual (MIT) AHI**", "—")
+        col3, col4 = st.columns(2)
+        with col3:
+            st.metric(f"**ODI ({desat_threshold}%)**", f"{odi_total:.1f}")
+        with col4:
+            st.metric("**Hypoxic Burden**", hb_display)
         st.success(f"**Risk Level:** {risk}")
 
         # PROOF REPORT BUTTON
@@ -503,7 +574,9 @@ if edf_file is not None:
                         'total_hb': total_hb,
                         'ci': [ci_low, ci_high] if len(df_events) > 0 else [total_hb, total_hb],
                         'events': proof_events,
-                        'stage_hb': stage_results
+                        'stage_hb': stage_results,
+                        'manual_ahi': manual_ahi,
+                        'use_mit_st': use_mit_st
                     },
                     proof_mode="Overlay",
                     include_stages=True
@@ -540,7 +613,7 @@ if edf_files:
         st.error("**BATCH TOO LARGE FOR ONLINE USE**")
         st.markdown("""
         **This batch requires local run.**
-        - **>5 files** or **>1 GB** to **too slow for cloud**
+        - **>5 files** or **>1 GB** → **too slow for cloud**
         - **Solution**: Use **local version** (2 GB+ support)
         """)
         with st.expander("Run Locally (No Coding)", expanded=True):
