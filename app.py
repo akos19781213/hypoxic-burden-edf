@@ -296,6 +296,7 @@ if edf_file is not None:
             max_value=300,
             value=100,
             step=10,
+            disabled=use_person_specific_window,
             help="Time window before event end to find maximum baseline SpO₂ (default: 100 s)"
         )
 
@@ -305,6 +306,7 @@ if edf_file is not None:
             max_value=120,
             value=60,
             step=5,
+            disabled=use_person_specific_window,
             help="How far back from event end to start measuring desaturation (typically ~60 s)"
         )
 
@@ -314,6 +316,7 @@ if edf_file is not None:
             max_value=300,
             value=120,
             step=10,
+            disabled=use_person_specific_window,
             help="How far forward from event end to continue measuring recovery (Typically ~120 s)"
         )
 
@@ -732,6 +735,7 @@ st.markdown("**Open-source** • [GitHub](https://github.com/Apolloplectic/hypox
 st.markdown("**DOI**: [10.5281/zenodo.17561726](https://doi.org/10.5281/zenodo.17561726)")
 st.markdown("Built with **Streamlit + MNE + YASA**.")
 st.markdown("Cite: *Eur Heart J* 2019;40:1149-1157.")
+
 
 
 
