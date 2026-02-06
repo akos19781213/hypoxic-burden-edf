@@ -247,10 +247,10 @@ if edf_file is not None:
 
     # === CHANNEL DETECTION ===
     spo2_ch = next((ch for ch in raw.ch_names if any(n in ch.upper() for n in ['SPO2', 'SAO2'])), None)
-    flow_ch = next((ch for ch in raw.ch_names if any(n in ch.upper() for n in ['AIRFLOW', 'FLOW'])), None)
-    eeg_ch = next((ch for ch in raw.ch_names if 'EEG' in ch.upper()), None)
-    eog_ch = next((ch for ch in raw.ch_names if 'EOG' in ch.upper()), None)
-    emg_ch = next((ch for ch in raw.ch_names if 'EMG' in ch.upper()), None)
+    flow_ch = next((ch for ch in raw.ch_names if any(n in ch.upper() for n in ['AIRFLOW', 'FLOW', 'PFlow'])), None)
+    eeg_ch = next((ch for ch in raw.ch_names if 'EEG' in ch.upper()) for n in ['F3M2', 'F3-M2', 'F4M1', 'F4-M1', 'C3M2', 'C3-M2', 'C4M1', 'C4-M1', 'O1M2', 'O1-M2', 'O2M1', 'O2-M1'])), None)
+    eog_ch = next((ch for ch in raw.ch_names if 'EOG' in ch.upper()) for n in ['E1M2', 'E1-M2', 'E2M2', 'E2-M2', 'REOGM2', 'LEOGM2'])), None)
+    emg_ch = next((ch for ch in raw.ch_names if 'EMG' in ch.upper()) for n in ['CEMG'])), None)
     if not spo2_ch:
         st.error("SpO₂ channel required.")
         st.stop()
@@ -732,6 +732,7 @@ st.markdown("**Open-source** • [GitHub](https://github.com/Apolloplectic/hypox
 st.markdown("**DOI**: [10.5281/zenodo.17561726](https://doi.org/10.5281/zenodo.17561726)")
 st.markdown("Built with **Streamlit + MNE + YASA**.")
 st.markdown("Cite: *Eur Heart J* 2019;40:1149-1157.")
+
 
 
 
