@@ -284,7 +284,7 @@ if edf_file is not None:
     with st.expander("Advanced Settings", expanded=False):
         # Patient-specific window toggle first
         use_person_specific_window = st.checkbox(
-            "Use person-specific search windows from ensemble average (Azarbarzin method)",
+            "Use patient-specific search windows from ensemble average (Azarbarzin method)",
             value=True,
             help="If checked, computes an average desaturation shape for this patient and uses it to set customized window lengths before/after each event end."
         )
@@ -735,6 +735,7 @@ st.markdown("**Open-source** • [GitHub](https://github.com/Apolloplectic/hypox
 st.markdown("**DOI**: [10.5281/zenodo.17561726](https://doi.org/10.5281/zenodo.17561726)")
 st.markdown("Built with **Streamlit + MNE + YASA**.")
 st.markdown("Cite: *Eur Heart J* 2019;40:1149-1157.")
+
 
 
 
