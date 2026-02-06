@@ -192,13 +192,12 @@ edf_file = st.file_uploader(
 with st.expander("File too large? Run locally (2 GB+ support) — no coding needed!", expanded=False):
     st.markdown("""
     ### **How to Run This App on Your Computer (2 GB+ Files)**
-    **No programming experience required. Takes 5 minutes.**
     ---
   
     #### **Step 1: Download the App (1-Click)**
     """)
     st.download_button(
-        label="Download Hypoxic Burden Calculator (Windows/Mac)",
+        label="Download Hypoxic Burden Calculator",
         data=open("hypoxic_burden_local.zip", "rb").read() if os.path.exists("hypoxic_burden_local.zip") else b"",
         file_name="Hypoxic_Burden_Calculator.zip",
         mime="application/zip",
@@ -733,6 +732,7 @@ st.markdown("**Open-source** • [GitHub](https://github.com/Apolloplectic/hypox
 st.markdown("**DOI**: [10.5281/zenodo.17561726](https://doi.org/10.5281/zenodo.17561726)")
 st.markdown("Built with **Streamlit + MNE + YASA**.")
 st.markdown("Cite: *Eur Heart J* 2019;40:1149-1157.")
+
 
 
 
