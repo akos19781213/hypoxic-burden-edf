@@ -281,21 +281,54 @@ if edf_file is not None:
     else:
         st.info("No .st file found – using auto-detection")
 
-    # === ADVANCED SETTINGS ===
+        # === ADVANCED SETTINGS ===
     with st.expander("Advanced Settings", expanded=False):
+        # Patient-specific window toggle first
         use_person_specific_window = st.checkbox(
-        "Use person-specific search windows from ensemble average (Azarbarzin method)",
-        value=False,
-        help="If checked, computes an average desaturation shape for this patient and uses it to set customized window lengths before/after each event end (more robust, slightly slower)."
-    )
-        col1, col2 = st.columns(2)
-        with col1:
-            pre_event_sec = st.selectbox("Pre-event baseline (s)", [60, 100, 120], index=1)
-            desat_start_sec = st.selectbox("Desat start before end (s)", [30, 60, 90], index=1)
-        with col2:
-            desat_end_sec = st.selectbox("Desat end after end (s)", [120, 180, 240], index=0)
-            artifact_filter = st.selectbox("SpO₂ artifact filter", ["Off", "Mild (10%/s)", "Strict (5%/s)"], index=0)
-        scoring_rule = st.selectbox("Scoring Rule (AHI + ODI)", ["3% (AASM)", "4% (Legacy)"], index=0)
+            "Use person-specific search windows from ensemble average (Azarbarzin method)",
+            value=True,
+            help="If checked, computes an average desaturation shape for this patient and uses it to set customized window lengths before/after each event end."
+        )
+
+        # Sliders for fine-tuning / fallback
+        pre_event_sec = st.slider(
+            "Pre-event baseline lookback (s)",
+            min_value=30,
+            max_value=300,
+            value=100,
+            step=10,
+            help="Time window before event end to find maximum baseline SpO₂ (default: 100 s)"
+        )
+
+        desat_start_sec = st.slider(
+            "Search window before event end (s)",
+            min_value=10,
+            max_value=120,
+            value=60,
+            step=5,
+            help="How far back from event end to start measuring desaturation (typically ~60 s)"
+        )
+
+        desat_end_sec = st.slider(
+            "Search window after event end (s)",
+            min_value=60,
+            max_value=300,
+            value=120,
+            step=10,
+            help="How far forward from event end to continue measuring recovery (Typically ~120 s)"
+        )
+
+        artifact_filter = st.selectbox(
+            "SpO₂ artifact filter",
+            ["Off", "Mild (10%/s)", "Strict (5%/s)"],
+            index=0
+        )
+
+        scoring_rule = st.selectbox(
+            "Scoring Rule (AHI + ODI)",
+            ["3% (AASM)", "4% (Legacy)"],
+            index=0
+        )
         desat_threshold = 3 if "3%" in scoring_rule else 4
 
     # === WARNINGS ===
@@ -700,5 +733,6 @@ st.markdown("**Open-source** • [GitHub](https://github.com/Apolloplectic/hypox
 st.markdown("**DOI**: [10.5281/zenodo.17561726](https://doi.org/10.5281/zenodo.17561726)")
 st.markdown("Built with **Streamlit + MNE + YASA**.")
 st.markdown("Cite: *Eur Heart J* 2019;40:1149-1157.")
+
 
 
