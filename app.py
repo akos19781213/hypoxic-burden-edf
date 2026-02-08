@@ -295,21 +295,40 @@ if edf_file is not None:
         scoring_rule = st.selectbox("Scoring Rule (AHI + ODI)", ["3% (AASM)", "4% (Legacy)"], index=0)
         desat_threshold = 3 if "3%" in scoring_rule else 4
 
-        # Global HB toggle & preset baseline
-        use_global_hb = st.checkbox(
-            "Calculate Global Hypoxic Burden (whole-study area below baseline)",
-            value=True,
-            help="Alternative metric: total desaturation below a single baseline over the entire sleep study. Captures all hypoxia, not just event-linked. Default: enabled."
-        )
+        # --- Global Hypoxic Burden ---
+        global_hb = None
+        baseline_used = None
+        if use_global_hb:
+            # Auto baseline = 95th percentile
+            baseline_auto = np.percentile(df_spo2['spo2'].dropna(), 95)
 
-        preset_baseline = st.number_input(
-            "Preset baseline SpO₂ (%) for global calculation",
-            min_value=80.0,
-            max_value=99.0,
-            value=0.0,
-            step=0.1,
-            help="If >0, overrides auto baseline. Leave at 0 to use auto-estimated 95th percentile."
-        )
+            preset_baseline = st.number_input(
+                "Preset baseline SpO₂ (%) for global calculation (0 = auto)",
+                min_value=0.0,
+                max_value=99.0,
+                value=0.0,
+                step=0.1,
+                format="%.1f",
+                help="Enter value >0 to override auto baseline. 0 = use automatic 95th percentile."
+            )
+
+            baseline_used = baseline_auto if preset_baseline <= 0 else preset_baseline
+
+            if preset_baseline > 0:
+                st.warning(f"Using user preset baseline: {preset_baseline:.1f}% (auto was {baseline_auto:.1f}%)")
+            else:
+                st.info(f"Auto baseline (95th percentile): {baseline_auto:.1f}%")
+
+            # Area above SpO₂ curve
+            depth_global = np.maximum(100 - df_spo2['spo2'].values, 0)
+            area_above_spo2 = trapz(depth_global, df_spo2['time'].values)
+
+            # Rectangle above baseline
+            total_sleep_sec = df_spo2['time'].max()
+            area_above_baseline = (100 - baseline_used) * total_sleep_sec
+
+            global_desat_area = max(0, area_above_spo2 - area_above_baseline)
+            global_hb = global_desat_area / 60 / total_hours if total_hours > 0 else 0
 
     # === WARNINGS ===
     if pre_event_sec != 100: st.warning("Pre-event window ≠ 100s (Azarbarzin default).")
@@ -770,3 +789,4 @@ st.markdown("**Open-source** • [GitHub](https://github.com/Apolloplectic/hypox
 st.markdown("**DOI**: [10.5281/zenodo.17561726](https://doi.org/10.5281/zenodo.17561726)")
 st.markdown("Built with **Streamlit + MNE + YASA + WFDB**.")
 st.markdown("Cite: *Eur Heart J* 2019;40:1149-1157.")
+
