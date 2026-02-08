@@ -556,9 +556,11 @@ class PSGAnalyzer:
             end_sec = (i + 1) * 30
             
             # Find events in this epoch
+            # IMPORTANT: Use 'start' time to attribute events to the sleep stage where they began,
+            # not the stage where the arousal occurred (which is often Wake)
             evs = self.events_df[
-                (self.events_df['end'] >= start_sec) &
-                (self.events_df['end'] < end_sec)
+                (self.events_df['start'] >= start_sec) &
+                (self.events_df['start'] < end_sec)
             ]
             
             stage_events[stage].extend(evs.to_dict('records'))
