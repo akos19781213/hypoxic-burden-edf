@@ -324,19 +324,31 @@ class PSGAnalyzer:
             Sleep stages for each 30s epoch
         """
         if use_mit_st and self.manual_stages is not None:
+            print("✅ Using MIT gold standard annotations")
             self.stages = self.manual_stages
             return self.stages
         
         # Check if YASA is available and we have EEG
-        if YASA_AVAILABLE and self.eeg_ch and self.raw.info['sfreq'] >= 100:
-            try:
-                stages = self._yasa_staging()
-                self.stages = stages
-                return stages
-            except Exception as e:
-                print(f"YASA staging failed: {e}. Falling back to rule-based.")
+        if YASA_AVAILABLE:
+            if not self.eeg_ch:
+                print("⚠️ YASA available but no EEG channel found")
+            elif self.raw.info['sfreq'] < 100:
+                print(f"⚠️ YASA available but sampling rate too low: {self.raw.info['sfreq']} Hz (need ≥100 Hz)")
+            else:
+                print(f"🔬 Attempting YASA staging (EEG: {self.eeg_ch}, sfreq: {self.raw.info['sfreq']} Hz)")
+                try:
+                    stages = self._yasa_staging()
+                    self.stages = stages
+                    print(f"✅ YASA staging successful: {len(stages)} epochs")
+                    return stages
+                except Exception as e:
+                    print(f"❌ YASA staging failed: {type(e).__name__}: {str(e)}")
+                    print("🔄 Falling back to rule-based staging...")
+        else:
+            print("⚠️ YASA not available - using rule-based staging")
         
         # Fall back to rule-based staging
+        print("🔬 Using rule-based spectral staging")
         stages = self._rule_based_staging()
         self.stages = stages
         return stages
@@ -345,37 +357,56 @@ class PSGAnalyzer:
         """
         Perform automatic sleep staging using YASA
         """
-        sls = yasa.SleepStaging(
-            self.raw,
-            eeg_name=self.eeg_ch,
-            eog_name=self.eog_ch,
-            emg_name=self.emg_ch
-        )
-        
-        hypno = sls.predict()
-        
-        # Convert YASA stages to standard format
-        # YASA returns one value per 30s epoch
-        stages = []
-        for stage in hypno:
-            if stage == 'W':
-                stages.append('W')
-            elif stage == 'N1':
-                stages.append('N1')
-            elif stage == 'N2':
-                stages.append('N2')
-            elif stage == 'N3':
-                stages.append('N3')
-            elif stage == 'R':
-                stages.append('REM')
-            else:
-                stages.append('Unknown')
-        
-        # Crop to recording duration
-        max_epochs = int(self.raw.times[-1] / 30)
-        stages = stages[:max_epochs]
-        
-        return stages
+        try:
+            # Check sampling rate
+            if self.raw.info['sfreq'] < 100:
+                print(f"⚠️ YASA requires ≥100 Hz, got {self.raw.info['sfreq']} Hz")
+                raise ValueError(f"Sampling rate too low: {self.raw.info['sfreq']} Hz")
+            
+            # Try to create SleepStaging object
+            print(f"🔬 Attempting YASA staging with EEG: {self.eeg_ch}, EOG: {self.eog_ch}, EMG: {self.emg_ch}")
+            
+            sls = yasa.SleepStaging(
+                self.raw,
+                eeg_name=self.eeg_ch,
+                eog_name=self.eog_ch,
+                emg_name=self.emg_ch
+            )
+            
+            print("✅ YASA SleepStaging object created successfully")
+            
+            # Try to predict
+            hypno = sls.predict()
+            print(f"✅ YASA prediction successful: {len(hypno)} epochs")
+            
+            # Convert YASA stages to standard format
+            stages = []
+            for stage in hypno:
+                if stage == 'W':
+                    stages.append('W')
+                elif stage == 'N1':
+                    stages.append('N1')
+                elif stage == 'N2':
+                    stages.append('N2')
+                elif stage == 'N3':
+                    stages.append('N3')
+                elif stage == 'R':
+                    stages.append('REM')
+                else:
+                    stages.append('Unknown')
+            
+            # Crop to recording duration
+            max_epochs = int(self.raw.times[-1] / 30)
+            stages = stages[:max_epochs]
+            
+            print(f"✅ YASA staging complete: {len(stages)} epochs converted")
+            return stages
+            
+        except Exception as e:
+            print(f"❌ YASA staging failed: {type(e).__name__}: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            raise  # Re-raise to trigger fallback
     
     def _rule_based_staging(self):
         """
