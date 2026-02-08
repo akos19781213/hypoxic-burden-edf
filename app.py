@@ -607,15 +607,24 @@ if batch_files:
         status_text.text("✅ Batch processing complete!")
         st.success(f"**Batch Complete!** Generated {len(st.session_state.batch_results)} reports.")
         
-        # Download button
-        st.download_button(
-            label=f"⬇️ Download All Reports ({len(st.session_state.batch_results)} files)",
-            data=zip_buffer.getvalue(),
-            file_name=f"HB_Batch_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip",
-            mime="application/zip",
-            type="primary",
-            use_container_width=True
-        )
+# Generate PDF
+pdf_generator = PDFReportGenerator()
+pdf_buffer = pdf_generator.generate_report(
+    filename=edf_file.name,
+    results=results,
+    proof_mode=proof_mode,
+    include_stages=include_stages
+)
+
+# download button
+st.download_button(
+    label="📥 Download PDF Report",
+    data=pdf_buffer.getvalue(),
+    file_name=f"HB_Report_{edf_file.name.replace('.edf', '')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
+    mime="application/pdf",
+    type="primary",
+    use_container_width=True
+)
         
         # Reset batch state
         for key in ['batch_running', 'batch_paused', 'batch_progress', 'batch_files_processed']:
