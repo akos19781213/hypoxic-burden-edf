@@ -351,7 +351,7 @@ else:
     st.write("- Low EEG sampling rate (<100 Hz)")
     st.write("- YASA not installed or failed to run")
     st.write("- Synthetic/test file with limited data")
-            if stage_data:
+        if stage_data:
                 import pandas as pd
                 st.dataframe(pd.DataFrame(stage_data), use_container_width=True)
         
