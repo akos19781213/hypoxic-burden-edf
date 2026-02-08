@@ -7,8 +7,6 @@ matplotlib>=3.7.0
 reportlab>=4.0.0
 wfdb>=4.1.0
 
-# YASA sleep staging (requires Python 3.9-3.10 and specific sklearn version)
-# Note: YASA 0.6.0 has strict dependencies - use 0.6.3 or 0.6.4 for better compatibility
-yasa==0.6.4
-scikit-learn==0.24.2
-numba==0.53.1
+# YASA commented out - requires Python 3.9-3.10
+# Uncomment if/when Python version is downgraded in Streamlit Cloud
+# yasa>=0.6.0
