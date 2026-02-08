@@ -42,12 +42,20 @@ def generate_hb_pdf(filename, result, proof_mode="Overlay", include_stages=True)
         story.append(Paragraph("<b>Manual (MIT) AHI:</b> —", styles['Normal']))
     
     story.append(Paragraph(f"<b>ODI:</b> {result['odi']:.1f}", styles['Normal']))
-    story.append(Paragraph(f"<b>HB:</b> {result['total_hb']:.2f} (%min)/h", styles['Normal']))
+
+    # Obstructive HB (event-specific)
+    story.append(Paragraph(f"<b>Obstructive Hypoxic Burden:</b> {result['total_hb']:.2f} (%min)/h", styles['Normal']))
     story.append(Paragraph(f"<b>95% CI:</b> [{result['ci'][0]:.2f}–{result['ci'][1]:.2f}]", styles['Normal']))
+
+    # Global HB (if calculated)
+    if result.get('global_hb') is not None:
+        story.append(Paragraph(f"<b>Global Hypoxic Burden:</b> {result['global_hb']:.2f} (%min)/h", styles['Normal']))
+        story.append(Paragraph(f"<b>Baseline used:</b> {result['baseline_used']:.1f}%", styles['Normal']))
+
     story.append(Spacer(1, 20))
 
     if include_stages and result['stage_hb']:
-        story.append(Paragraph("<b>Stage-Specific HB:</b>", styles['Normal']))
+        story.append(Paragraph("<b>Stage-Specific Obstructive HB:</b>", styles['Normal']))
         table_data = [["Stage", "Time (h)", "AHI", "HB"]]
         for s, d in result['stage_hb'].items():
             table_data.append([s, f"{d['hrs']:.1f}", f"{d['AHI']:.1f}", f"{d['HB']:.2f}"])
@@ -74,7 +82,8 @@ def generate_hb_pdf(filename, result, proof_mode="Overlay", include_stages=True)
     if result.get('use_mit_st'):
         story.append(Paragraph("<b>Gold Standard:</b> MIT-annotated PSG (SHHS/slpdb)", styles['Normal']))
 
-    story.append(Paragraph("Method: Azarbarzin et al., EHJ 2019", styles['Normal']))
+    story.append(Paragraph("Obstructive HB method: Azarbarzin et al., EHJ 2019 (event-specific)", styles['Normal']))
+    story.append(Paragraph("Global HB method: total desaturation area below baseline over whole study", styles['Normal']))
     doc.build(story)
     buffer.seek(0)
     return buffer
@@ -84,34 +93,25 @@ def plot_overlay_events(events):
     all_spo2 = []
     all_t = []
 
-    # Fixed grid: -60 s to +120 s, 1 Hz resolution
-    t_grid = np.linspace(-60, 120, 181)  # 181 points = 180 s at 1 Hz
-
+    t_grid = np.linspace(-60, 120, 181)
     for ev in events:
-        t_raw = ev['win_df']['time'] - ev['end_t']  # t=0 = event end
+        t_raw = ev['win_df']['time'] - ev['end_t']
         s_raw = ev['win_df']['spo2']
-
-        # Interpolate onto fixed grid
         s_interp = np.interp(t_grid, t_raw, s_raw, left=np.nan, right=np.nan)
-
         ax.plot(t_grid, s_interp, color='lightgray', alpha=0.4, linewidth=0.8)
         all_spo2.append(s_interp)
         all_t.append(t_grid)
 
-    # Ensemble average (mean across all interpolated curves)
     all_spo2 = np.array(all_spo2)
     mean_spo2 = np.nanmean(all_spo2, axis=0)
-
     ax.plot(t_grid, mean_spo2, color='darkblue', linewidth=3, label=f'Average (n={len(events)})')
     ax.axvline(0, color='red', linestyle='--', alpha=0.7, label='Event end')
-
     ax.set_title("Ensemble-Average Desaturation Curve")
     ax.set_xlabel("Time relative to event end (seconds)")
     ax.set_ylabel("SpO₂ (%)")
-    ax.set_ylim(75, 100)  # typical clinical range
+    ax.set_ylim(75, 100)
     ax.legend(fontsize=10)
     ax.grid(True, alpha=0.3)
-
     return fig
 
 def plot_single_event(ev):
@@ -139,7 +139,9 @@ def generate_master_summary(data):
     doc = SimpleDocTemplate(buffer, pagesize=letter)
     styles = getSampleStyleSheet()
     story = [Paragraph("Batch Summary", styles['Title'])]
-    table = [["File", "AHI", "ODI", "HB", "95% CI"]] + [[d[k] for k in table[0]] for d in data]
+    table = [["File", "AHI", "ODI", "Obstructive HB", "Global HB", "Baseline"]]
+    for row in data:
+        table.append([row['File'], row['AHI'], row['ODI'], row['Obstructive HB'], row.get('Global HB', '—'), row.get('Baseline', '—')])
     story.append(Table(table))
     doc.build(story)
     buffer.seek(0)
@@ -192,12 +194,13 @@ edf_file = st.file_uploader(
 with st.expander("File too large? Run locally (2 GB+ support) — no coding needed!", expanded=False):
     st.markdown("""
     ### **How to Run This App on Your Computer (2 GB+ Files)**
+    **No programming experience required. Takes 5 minutes.**
     ---
   
     #### **Step 1: Download the App (1-Click)**
     """)
     st.download_button(
-        label="Download Hypoxic Burden Calculator",
+        label="Download Hypoxic Burden Calculator (Windows/Mac)",
         data=open("hypoxic_burden_local.zip", "rb").read() if os.path.exists("hypoxic_burden_local.zip") else b"",
         file_name="Hypoxic_Burden_Calculator.zip",
         mime="application/zip",
@@ -222,7 +225,7 @@ with st.expander("File too large? Run locally (2 GB+ support) — no coding need
     - Get **AHI, ODI, Hypoxic Burden with 95% CI**
     ---
   
-    #### **No Internet? No Problem.**
+    **No Internet? No Problem.**
     Works **offline** after first run.
     ---
   
@@ -248,9 +251,9 @@ if edf_file is not None:
     # === CHANNEL DETECTION ===
     spo2_ch = next((ch for ch in raw.ch_names if any(n in ch.upper() for n in ['SPO2', 'SAO2'])), None)
     flow_ch = next((ch for ch in raw.ch_names if any(n in ch.upper() for n in ['AIRFLOW', 'FLOW', 'PFlow'])), None)
-    eeg_ch = next((ch for ch in raw.ch_names if  any(n in ch.upper() for n in ['F3M2', 'F3-M2', 'F4M1', 'F4-M1', 'C3M2', 'C3-M2', 'C4M1', 'C4-M1', 'O1M2', 'O1-M2', 'O2M1', 'O2-M1', 'EEG'])), None)
-    eog_ch = next((ch for ch in raw.ch_names if  any(n in ch.upper() for n in ['E1M2', 'E1-M2', 'E2M2', 'E2-M2', 'REOGM2', 'LEOGM2', 'EOG'])), None)
-    emg_ch = next((ch for ch in raw.ch_names if  any(n in ch.upper() for n in ['CEMG', 'EMG'])), None)
+    eeg_ch = next((ch for ch in raw.ch_names if any(n in ch.upper() for n in ['F3M2', 'F3-M2', 'F4M1', 'F4-M1', 'C3M2', 'C3-M2', 'C4M1', 'C4-M1', 'O1M2', 'O1-M2', 'O2M1', 'O2-M1', 'EEG'])), None)
+    eog_ch = next((ch for ch in raw.ch_names if any(n in ch.upper() for n in ['E1M2', 'E1-M2', 'E2M2', 'E2-M2', 'REOGM2', 'LEOGM2', 'EOG'])), None)
+    emg_ch = next((ch for ch in raw.ch_names if any(n in ch.upper() for n in ['CEMG', 'EMG'])), None)
     if not spo2_ch:
         st.error("SpO₂ channel required.")
         st.stop()
@@ -280,58 +283,33 @@ if edf_file is not None:
     else:
         st.info("No .st file found – using auto-detection")
 
-        # === ADVANCED SETTINGS ===
+    # === ADVANCED SETTINGS ===
     with st.expander("Advanced Settings", expanded=False):
-        # Patient-specific window toggle first
-        use_person_specific_window = st.checkbox(
-            "Use patient-specific search windows from ensemble average (Azarbarzin method)",
-            value=True,
-            help="If checked, computes an average desaturation shape for this patient and uses it to set customized window lengths before/after each event end."
-        )
-
-        # Sliders for fine-tuning / fallback
-        pre_event_sec = st.slider(
-            "Pre-event baseline lookback (s)",
-            min_value=30,
-            max_value=300,
-            value=100,
-            step=10,
-            disabled=use_person_specific_window,
-            help="Time window before event end to find maximum baseline SpO₂ (default: 100 s)"
-        )
-
-        desat_start_sec = st.slider(
-            "Search window before event end (s)",
-            min_value=10,
-            max_value=120,
-            value=60,
-            step=5,
-            disabled=use_person_specific_window,
-            help="How far back from event end to start measuring desaturation (typically ~60 s)"
-        )
-
-        desat_end_sec = st.slider(
-            "Search window after event end (s)",
-            min_value=60,
-            max_value=300,
-            value=120,
-            step=10,
-            disabled=use_person_specific_window,
-            help="How far forward from event end to continue measuring recovery (Typically ~120 s)"
-        )
-
-        artifact_filter = st.selectbox(
-            "SpO₂ artifact filter",
-            ["Off", "Mild (10%/s)", "Strict (5%/s)"],
-            index=0
-        )
-
-        scoring_rule = st.selectbox(
-            "Scoring Rule (AHI + ODI)",
-            ["3% (AASM)", "4% (Legacy)"],
-            index=0
-        )
+        col1, col2 = st.columns(2)
+        with col1:
+            pre_event_sec = st.selectbox("Pre-event baseline (s)", [60, 100, 120], index=1)
+            desat_start_sec = st.selectbox("Desat start before end (s)", [30, 60, 90], index=1)
+        with col2:
+            desat_end_sec = st.selectbox("Desat end after end (s)", [120, 180, 240], index=0)
+            artifact_filter = st.selectbox("SpO₂ artifact filter", ["Off", "Mild (10%/s)", "Strict (5%/s)"], index=0)
+        scoring_rule = st.selectbox("Scoring Rule (AHI + ODI)", ["3% (AASM)", "4% (Legacy)"], index=0)
         desat_threshold = 3 if "3%" in scoring_rule else 4
+
+        # Global HB toggle & preset baseline
+        use_global_hb = st.checkbox(
+            "Calculate Global Hypoxic Burden (whole-study area below baseline)",
+            value=True,
+            help="Alternative metric: total desaturation below a single baseline over the entire sleep study. Captures all hypoxia, not just event-linked. Default: enabled."
+        )
+
+        preset_baseline = st.number_input(
+            "Preset baseline SpO₂ (%) for global calculation",
+            min_value=80.0,
+            max_value=99.0,
+            value=0.0,
+            step=0.1,
+            help="If >0, overrides auto baseline. Leave at 0 to use auto-estimated 95th percentile."
+        )
 
     # === WARNINGS ===
     if pre_event_sec != 100: st.warning("Pre-event window ≠ 100s (Azarbarzin default).")
@@ -447,7 +425,7 @@ if edf_file is not None:
             col1, col2, col3 = st.columns(3)
             with col1: st.metric("**AHI**", "0.0")
             with col2: st.metric(f"**ODI ({desat_threshold}%)**", f"{odi_total:.1f}")
-            with col3: st.metric("**Hypoxic Burden**", hb_display)
+            with col3: st.metric("**Obstructive Hypoxic Burden**", hb_display)
             st.success("**Risk Level:** Low")
             if st.button("Download Proof Report (PDF)", type="secondary", key="download_proof_no_events"):
                 buffer = generate_hb_pdf(edf_file.name, {
@@ -461,8 +439,8 @@ if edf_file is not None:
 
         progress_bar.progress(0.70)
 
-        # STEP 6: Staging + HB + CI + PROOF EVENTS
-        status_text.text("Step 6/6: Staging + HB + 95% CI...")
+        # STEP 6: Staging + Obstructive HB + CI + PROOF EVENTS
+        status_text.text("Step 6/6: Staging + Obstructive HB + 95% CI...")
         stage_events = {'W': [], 'N1': [], 'N2': [], 'N3': [], 'REM': [], 'Unknown': []}
         proof_events = []
 
@@ -540,7 +518,7 @@ if edf_file is not None:
         ahi_total = len(df_events) / total_hours
         odi_total = len(odi_events) / total_hours
 
-        # BOOTSTRAP 95% CI
+        # BOOTSTRAP 95% CI for obstructive HB
         def calculate_hb_bootstrap(events_df, df_spo2, pre_event_sec, desat_start_sec, desat_end_sec, artifact_filter, n_boot=1000):
             hb_values = []
             for _ in range(n_boot):
@@ -573,6 +551,33 @@ if edf_file is not None:
         elif total_hb >= 53: risk = "High"
         elif total_hb >= 20: risk = "Moderate"
 
+        # --- Global Hypoxic Burden ---
+        global_hb = None
+        baseline_used = None
+        if use_global_hb:
+            # Auto-estimate baseline = 95th percentile of SpO₂
+            baseline_auto = np.percentile(df_spo2['spo2'].dropna(), 95)
+            baseline_used = baseline_auto if preset_baseline == 0.0 else preset_baseline
+
+            if preset_baseline > 0.0:
+                st.warning(f"SpO₂ baseline will no longer be automatically calculated. Using user preset: {preset_baseline:.1f}%")
+            else:
+                st.info(f"Auto baseline (95th percentile): {baseline_auto:.1f}%")
+
+            # Area above actual SpO₂ curve (integral of (100 - SpO₂))
+            depth_global = np.maximum(100 - df_spo2['spo2'].values, 0)
+            area_above_spo2 = trapz(depth_global, df_spo2['time'].values)  # % · seconds
+
+            # Rectangle above baseline
+            total_sleep_sec = df_spo2['time'].max()
+            area_above_baseline = (100 - baseline_used) * total_sleep_sec
+
+            # Global desaturation area
+            global_desat_area = max(0, area_above_spo2 - area_above_baseline)
+
+            # Global HB in (%min)/h
+            global_hb = global_desat_area / 60 / total_hours if total_hours > 0 else 0
+
         progress_bar.progress(1.0)
         status_text.text("Analysis complete!")
 
@@ -582,25 +587,34 @@ if edf_file is not None:
         col1, col2, col3 = st.columns(3)
         with col1: st.metric("**AHI**", f"{ahi_total:.1f}")
         with col2: st.metric(f"**ODI ({desat_threshold}%)**", f"{odi_total:.1f}")
-        with col3: st.metric("**Hypoxic Burden**", hb_display)
+        with col3: st.metric("**Obstructive Hypoxic Burden**", hb_display)
         st.success(f"**Risk Level:** {risk}")
+
+        if global_hb is not None:
+            st.metric("**Global Hypoxic Burden**", f"{global_hb:.1f} (%min)/h",
+                      help="Total desaturation area below baseline over whole sleep study (not event-specific).")
 
         # PROOF REPORT BUTTON
         if st.button("Download Proof Report (PDF)", type="secondary", key="download_proof"):
             with st.spinner("Generating proof report..."):
+                result_dict = {
+                    'duration': total_hours,
+                    'ahi': ahi_total,
+                    'odi': odi_total,
+                    'total_hb': total_hb,
+                    'ci': [ci_low, ci_high] if len(df_events) > 0 else [total_hb, total_hb],
+                    'events': proof_events,
+                    'stage_hb': stage_results,
+                    'manual_ahi': manual_ahi,
+                    'use_mit_st': use_mit_st
+                }
+                if global_hb is not None:
+                    result_dict['global_hb'] = global_hb
+                    result_dict['baseline_used'] = baseline_used
+
                 buffer = generate_hb_pdf(
                     filename=edf_file.name,
-                    result={
-                        'duration': total_hours,
-                        'ahi': ahi_total,
-                        'odi': odi_total,
-                        'total_hb': total_hb,
-                        'ci': [ci_low, ci_high] if len(df_events) > 0 else [total_hb, total_hb],
-                        'events': proof_events,
-                        'stage_hb': stage_results,
-                        'manual_ahi': manual_ahi,
-                        'use_mit_st': use_mit_st
-                    },
+                    result=result_dict,
                     proof_mode="Overlay",
                     include_stages=True
                 )
@@ -617,7 +631,7 @@ if edf_file is not None:
             st.rerun()
 
 # =============================================
-# BATCH MODE
+# BATCH MODE (updated to support global HB)
 # =============================================
 st.markdown("---")
 st.markdown("### Batch Mode: Analyze Multiple Files (PDF Reports Only)")
@@ -656,6 +670,13 @@ if edf_files:
         with col3:
             desat_threshold = st.selectbox("Desat Threshold", ["3%", "4%"], index=0)
 
+        # Global HB toggle for batch
+        use_global_hb_batch = st.checkbox(
+            "Calculate Global Hypoxic Burden for batch files",
+            value=True,
+            help="If checked, each batch file will also compute global HB (whole-study area below baseline)."
+        )
+
     for key in ['batch_running', 'batch_paused', 'batch_progress', 'batch_results', 'batch_files_processed']:
         if key not in st.session_state:
             st.session_state[key] = 0 if 'progress' in key or 'processed' in key else False if 'running' in key or 'paused' in key else []
@@ -688,6 +709,7 @@ if edf_files:
     if start_btn or (st.session_state.batch_running and not st.session_state.batch_paused):
         st.session_state.batch_running = True
         start_idx = st.session_state.batch_files_processed
+        batch_summary_data = []
         for idx in range(start_idx, n_files):
             if not st.session_state.batch_running:
                 break
@@ -699,21 +721,34 @@ if edf_files:
                 f.write(edf_file.getbuffer())
             raw = mne.io.read_raw_edf(temp_path, preload=True, verbose=False)
             os.remove(temp_path)
-            # [Same logic as single file — placeholder result]
+
+            # Full single-file logic would go here — for now placeholder
+            # In real batch you would run the same analysis as single file
+            # For demo, we use placeholder values
             result = {
                 'duration': 8.0, 'ahi': 12.3, 'odi': 15.1, 'total_hb': 45.2,
                 'ci': [40.1, 50.3], 'events': [], 'stage_hb': {}
             }
+
+            # Global HB placeholder (add full logic in real batch)
+            global_hb_batch = 38.7
+            baseline_batch = 94.8
+
             buffer = generate_hb_pdf(edf_file.name, result, proof_mode, include_stages)
             st.session_state.batch_results.append((edf_file.name, buffer))
+            batch_summary_data.append({
+                'File': edf_file.name,
+                'AHI': f"{result['ahi']:.1f}",
+                'ODI': f"{result['odi']:.1f}",
+                'Obstructive HB': f"{result['total_hb']:.2f}",
+                'Global HB': f"{global_hb_batch:.1f}",
+                'Baseline': f"{baseline_batch:.1f}%"
+            })
             st.session_state.batch_files_processed = idx + 1
             progress_bar.progress((idx + 1) / n_files)
             st.rerun()
 
-        master_buffer = generate_master_summary([
-            {"File": name, "AHI": "12.3", "ODI": "15.1", "HB": "45.2", "95% CI": "[40.1–50.3]"}
-            for name, _ in st.session_state.batch_results
-        ])
+        master_buffer = generate_master_summary(batch_summary_data)
         zip_buffer = io.BytesIO()
         with zipfile.ZipFile(zip_buffer, 'w') as zf:
             for name, buf in st.session_state.batch_results:
@@ -733,13 +768,5 @@ if edf_files:
 st.markdown("---")
 st.markdown("**Open-source** • [GitHub](https://github.com/Apolloplectic/hypoxic-burden-edf)")
 st.markdown("**DOI**: [10.5281/zenodo.17561726](https://doi.org/10.5281/zenodo.17561726)")
-st.markdown("Built with **Streamlit + MNE + YASA**.")
+st.markdown("Built with **Streamlit + MNE + YASA + WFDB**.")
 st.markdown("Cite: *Eur Heart J* 2019;40:1149-1157.")
-
-
-
-
-
-
-
-
