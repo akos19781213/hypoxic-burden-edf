@@ -500,10 +500,46 @@ class PSGAnalyzer:
             Results including HB, proof events, stage-specific results
         """
         if self.events_df is None or len(self.events_df) == 0:
+            # Even with 0 events, return stage breakdown if staging was done
+            if self.stages is None:
+                self.perform_sleep_staging()
+            
+            # Calculate stage-specific ODI even without apnea events
+            stage_results = {}
+            if self.stages:
+                stage_counts = pd.Series(self.stages).value_counts()
+                stage_time = (stage_counts * 30 / 3600).to_dict()
+                
+                for stage in ['W', 'N1', 'N2', 'N3', 'REM']:
+                    hrs = stage_time.get(stage, 0)
+                    if hrs == 0:
+                        continue
+                    
+                    # Calculate ODI for this stage
+                    stage_indices = [i for i, s in enumerate(self.stages) if s == stage]
+                    if stage_indices:
+                        stage_start_sec = stage_indices[0] * 30
+                        stage_end_sec = stage_start_sec + hrs * 3600
+                        
+                        odi_in_stage = self.odi_events[
+                            (self.odi_events['time'] >= stage_start_sec) &
+                            (self.odi_events['time'] < stage_end_sec)
+                        ]
+                        odi_stage = len(odi_in_stage) / hrs if hrs > 0 else 0
+                    else:
+                        odi_stage = 0
+                    
+                    stage_results[stage] = {
+                        'hrs': hrs,
+                        'AHI': 0.0,
+                        'ODI': odi_stage,
+                        'HB': 0.0
+                    }
+            
             return {
                 'total_hb': 0.0,
                 'proof_events': [],
-                'stage_results': {}
+                'stage_results': stage_results
             }
         
         if self.stages is None:
