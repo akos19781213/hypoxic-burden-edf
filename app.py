@@ -357,7 +357,7 @@ if edf_file is not None:
         with col2:
             include_stages = st.checkbox("Include stage-specific results", value=True)
         
-        if st.button("📥 Download PDF Report", type="primary", use_container_width=True):
+        if st.button("📥 Generate PDF Report", type="primary", use_container_width=True):
             with st.spinner("Generating PDF report..."):
                 pdf_generator = PDFReportGenerator()
                 buffer = pdf_generator.generate_report(
