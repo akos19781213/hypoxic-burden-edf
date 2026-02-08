@@ -570,11 +570,11 @@ if edf_file is not None:
         elif total_hb >= 53: risk = "High"
         elif total_hb >= 20: risk = "Moderate"
 
-        # --- Global Hypoxic Burden ---
+        # --- Global Hypoxic Burden
         global_hb = None
         baseline_used = None
         if use_global_hb:
-            # Auto-estimate baseline = 95th percentile of SpO₂
+            # Auto baseline = 95th percentile of SpO₂
             baseline_auto = np.percentile(df_spo2['spo2'].dropna(), 95)
             baseline_used = baseline_auto if preset_baseline == 0.0 else preset_baseline
 
