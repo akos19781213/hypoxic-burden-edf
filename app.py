@@ -323,10 +323,11 @@ if edf_file is not None:
                 )
         
         # Stage-specific results
+        st.markdown("---")
+        st.subheader("😴 Stage-Specific Metrics")
+        
         if results['stage_hb']:
-            st.markdown("---")
-            st.subheader("😴 Stage-Specific Metrics")
-            
+            # Show the table
             stage_data = []
             for stage in ['W', 'N1', 'N2', 'N3', 'REM']:
                 if stage in results['stage_hb']:
@@ -338,7 +339,18 @@ if edf_file is not None:
                         'ODI': f"{data['ODI']:.1f}",
                         'HB': f"{data['HB']:.2f}"
                     })
-            
+    
+    if stage_data:
+        import pandas as pd
+        st.dataframe(pd.DataFrame(stage_data), use_container_width=True)
+    else:
+        st.warning("⚠️ No sleep stages detected in this recording")
+else:
+    st.warning("⚠️ Sleep staging failed - no stage-specific results available. This may be due to:")
+    st.write("- Missing or incompatible EEG channel")
+    st.write("- Low EEG sampling rate (<100 Hz)")
+    st.write("- YASA not installed or failed to run")
+    st.write("- Synthetic/test file with limited data")
             if stage_data:
                 import pandas as pd
                 st.dataframe(pd.DataFrame(stage_data), use_container_width=True)
