@@ -340,17 +340,17 @@ if edf_file is not None:
                         'HB': f"{data['HB']:.2f}"
                     })
     
-    if stage_data:
-        import pandas as pd
-        st.dataframe(pd.DataFrame(stage_data), use_container_width=True)
-    else:
-        st.warning("⚠️ No sleep stages detected in this recording")
-else:
-    st.warning("⚠️ Sleep staging failed - no stage-specific results available. This may be due to:")
-    st.write("- Missing or incompatible EEG channel")
-    st.write("- Low EEG sampling rate (<100 Hz)")
-    st.write("- YASA not installed or failed to run")
-    st.write("- Synthetic/test file with limited data")
+            if stage_data:
+                import pandas as pd
+                st.dataframe(pd.DataFrame(stage_data), use_container_width=True)
+            else:
+                st.warning("⚠️ No sleep stages detected in this recording")
+        else:
+            st.warning("⚠️ Sleep staging failed - no stage-specific results available. This may be due to:")
+            st.write("- Missing or incompatible EEG channel")
+            st.write("- Low EEG sampling rate (<100 Hz)")
+            st.write("- YASA not installed or failed to run")
+            st.write("- Synthetic/test file with limited data")
     if stage_data:
         import pandas as pd
         st.dataframe(pd.DataFrame(stage_data), use_container_width=True)
