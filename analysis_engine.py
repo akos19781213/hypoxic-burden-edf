@@ -126,7 +126,7 @@ class PSGAnalyzer:
         # Resample to 1 Hz if needed
         if self.raw.info['sfreq'] != 1:
             df['time'] = pd.to_datetime(df['time'], unit='s')
-            df = df.set_index('time').resample('1S').mean().interpolate(method='linear').reset_index()
+            df = df.set_index('time').resample('1s').mean().interpolate(method='linear').reset_index()
             df['time'] = (df['time'] - df['time'].iloc[0]).dt.total_seconds()
         
         # Apply artifact filter
@@ -212,7 +212,7 @@ class PSGAnalyzer:
         })
         
         df_flow['time'] = pd.to_datetime(df_flow['time'], unit='s')
-        df_flow = df_flow.set_index('time').resample('0.1S').mean().interpolate(method='linear').reset_index()
+        df_flow = df_flow.set_index('time').resample('0.1s').mean().interpolate(method='linear').reset_index()
         df_flow['time'] = (df_flow['time'] - df_flow['time'].iloc[0]).dt.total_seconds()
         
         self.df_flow = df_flow
@@ -323,32 +323,34 @@ class PSGAnalyzer:
         list
             Sleep stages for each 30s epoch
         """
+        import streamlit as st
+        
         if use_mit_st and self.manual_stages is not None:
-            print("✅ Using MIT gold standard annotations")
+            st.info("✅ Using MIT gold standard annotations")
             self.stages = self.manual_stages
             return self.stages
         
         # Check if YASA is available and we have EEG
         if YASA_AVAILABLE:
             if not self.eeg_ch:
-                print("⚠️ YASA available but no EEG channel found")
+                st.warning("⚠️ YASA available but no EEG channel found - using rule-based staging")
             elif self.raw.info['sfreq'] < 100:
-                print(f"⚠️ YASA available but sampling rate too low: {self.raw.info['sfreq']} Hz (need ≥100 Hz)")
+                st.warning(f"⚠️ YASA requires ≥100 Hz, got {self.raw.info['sfreq']} Hz - using rule-based staging")
             else:
-                print(f"🔬 Attempting YASA staging (EEG: {self.eeg_ch}, sfreq: {self.raw.info['sfreq']} Hz)")
+                st.info(f"🔬 Attempting YASA deep learning staging (sfreq: {self.raw.info['sfreq']} Hz)")
                 try:
                     stages = self._yasa_staging()
                     self.stages = stages
-                    print(f"✅ YASA staging successful: {len(stages)} epochs")
+                    st.success(f"✅ YASA staging successful: {len(stages)} epochs")
                     return stages
                 except Exception as e:
-                    print(f"❌ YASA staging failed: {type(e).__name__}: {str(e)}")
-                    print("🔄 Falling back to rule-based staging...")
+                    st.error(f"❌ YASA failed: {type(e).__name__}: {str(e)}")
+                    st.warning("🔄 Falling back to rule-based staging...")
         else:
-            print("⚠️ YASA not available - using rule-based staging")
+            st.info("ℹ️ YASA not installed - using rule-based staging")
         
         # Fall back to rule-based staging
-        print("🔬 Using rule-based spectral staging")
+        st.info("🔬 Using rule-based spectral staging")
         stages = self._rule_based_staging()
         self.stages = stages
         return stages
